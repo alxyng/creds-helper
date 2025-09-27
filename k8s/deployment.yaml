@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: creds-helper
+  namespace: kube-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: creds-helper
+  template:
+    metadata:
+      labels:
+        app: creds-helper
+    spec:
+      serviceAccountName: creds-helper
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: "true"
+      containers:
+        - name: creds-helper
+          image: alxyng/creds-helper:latest
+          env:
+          - name: AWS_REGION
+            value: eu-central-1
+          - name: CREDS_HELPER_NAMESPACE
+            value: default
+          - name: CREDS_HELPER_SECRET_NAME
+            value: ecr-creds
