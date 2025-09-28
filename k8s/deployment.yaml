@@ -22,7 +22,7 @@ spec:
           env:
           - name: AWS_REGION
             value: eu-central-1
-          - name: CREDS_HELPER_NAMESPACE
+          - name: CREDS_HELPER_NAMESPACES
             value: default
           - name: CREDS_HELPER_SECRET_NAME
             value: ecr-creds

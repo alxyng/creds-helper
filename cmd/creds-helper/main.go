@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -51,9 +52,9 @@ func main() {
 
 	ecrClient := ecr.NewFromConfig(cfg)
 
-	credsHelperNamespace := os.Getenv("CREDS_HELPER_NAMESPACE")
-	if credsHelperNamespace == "" {
-		credsHelperNamespace = "default"
+	credsHelperNamespaces := os.Getenv("CREDS_HELPER_NAMESPACES")
+	if credsHelperNamespaces == "" {
+		credsHelperNamespaces = "default"
 	}
 
 	credsHelperSecretName := os.Getenv("CREDS_HELPER_SECRET_NAME")
@@ -62,7 +63,7 @@ func main() {
 	}
 
 	helpercfg := &HelperConfig{
-		Namespace:  credsHelperNamespace,
+		Namespaces: strings.Split(credsHelperNamespaces, ","),
 		SecretName: credsHelperSecretName,
 		ReauthTime: 1 * time.Hour,
 	}
@@ -112,7 +113,7 @@ func getKubeClient(logger *zap.Logger) (*kubernetes.Clientset, error) {
 }
 
 type HelperConfig struct {
-	Namespace  string
+	Namespaces []string
 	SecretName string
 	ReauthTime time.Duration
 }
@@ -180,27 +181,29 @@ func (h *Helper) run(ctx context.Context) error {
 		Type: "kubernetes.io/dockerconfigjson",
 	}
 
-	_, err = h.kc.CoreV1().Secrets(h.cfg.Namespace).Get(ctx, h.cfg.SecretName, metav1.GetOptions{})
-	if err != nil {
-		if errors.IsNotFound(err) {
-			h.logger.Debug("creating secret", zap.String("name", h.cfg.SecretName))
+	for _, namespace := range h.cfg.Namespaces {
+		_, err = h.kc.CoreV1().Secrets(namespace).Get(ctx, h.cfg.SecretName, metav1.GetOptions{})
+		if err != nil {
+			if errors.IsNotFound(err) {
+				h.logger.Debug("creating secret", zap.String("name", h.cfg.SecretName))
 
-			_, err = h.kc.CoreV1().Secrets(h.cfg.Namespace).Create(ctx, secret, metav1.CreateOptions{})
-			if err != nil {
-				return fmt.Errorf("error creating secret: %w", err)
+				_, err = h.kc.CoreV1().Secrets(namespace).Create(ctx, secret, metav1.CreateOptions{})
+				if err != nil {
+					return fmt.Errorf("error creating secret: %w", err)
+				}
+
+				return nil
+			} else {
+				return fmt.Errorf("error getting secret: %w", err)
 			}
-
-			return nil
-		} else {
-			return fmt.Errorf("error getting secret: %w", err)
 		}
-	}
 
-	h.logger.Debug("updating secret", zap.String("name", h.cfg.SecretName))
+		h.logger.Debug("updating secret", zap.String("name", h.cfg.SecretName))
 
-	_, err = h.kc.CoreV1().Secrets(h.cfg.Namespace).Update(ctx, secret, metav1.UpdateOptions{})
-	if err != nil {
-		return fmt.Errorf("error updating secret: %w", err)
+		_, err = h.kc.CoreV1().Secrets(namespace).Update(ctx, secret, metav1.UpdateOptions{})
+		if err != nil {
+			return fmt.Errorf("error updating secret: %w", err)
+		}
 	}
 
 	return nil
